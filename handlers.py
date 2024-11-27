@@ -98,7 +98,7 @@ def get_records_by_date(message):
         if len(report) > MAX_MESSAGE_LENGTH:
             parts = [report[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(report), MAX_MESSAGE_LENGTH)]
             for part in parts:
-                bot.reply_to(message, report)
+                bot.reply_to(message, part)
         else:
             bot.reply_to(message, report)
 
