@@ -113,47 +113,63 @@ def get_records_by_date(message):
 @bot.message_handler(commands=['report'])
 def send_report(message):
     """
-    processes the /report command and generates a report
-    for the specified employee for the selected day
+    обработчик команды репорт, отправляет отчет по сотруднику за указанную дату
+    если дата не указана - используется текущая
+    формат команды:
+    /report ДДММ(ГГ) сотрудник
+    /report сотрудник
     """
     try:
         args = message.text.split()
-        if len(args) < 3:
-            bot.reply_to(message, 'Используйте: /report <сотрудник> <дата в формате ДДММГГ>')
+
+        if len(args) < 2:
+            bot.reply_to(message, 'Укажите сотрудника: /report <сотрудник> <дата в формате ДДММ(ГГ)>'
+                                  'либо /report сотрудник')
             return
 
-        employee = args[1].strip().lower()
-        date_str = args[2].strip()
+        if args[-1].isdigit():
+            date_input = args[-1]
+            if len(date_input) == 6:
+                full_date = datetime.strptime(date_input, '%d%m%y')
+            elif len(date_input) == 4:
+                current_year = datetime.now().strftime('%y')
+                full_date = datetime.strptime(date_input + current_year, '%d%m%y')
+            else:
+                bot.reply_to(message, 'Неверный формат даты. Используйте ДДММГГ или ДДММ')
+                return
 
-        if len(date_str) not in [4, 6]:
-            bot.reply_to(message, 'Дата должна быть в формате ДДММ или ДДММГГ')
+            employee = ' '.join(args[1:-1]).strip().lower()
+        else:
+            full_date = datetime.now()
+            employee = ' '.join(args[1:]).strip().lower()
+
+        if not employee:
+            bot.reply_to(message, 'Укажите имя сотрудника')
             return
 
-        try:
-            current_date = datetime.now()
-            report_date = infer_year(date_str, current_date)
-        except ValueError:
-            bot.reply_to(message, 'Некорректный формат даты')
-            return
+        report_date_str = full_date.strftime('%Y-%m-%d')
 
-        report_date_str = report_date.strftime('%Y-%m-%d')
         logs = get_daily_report(employee, report_date_str)
         if not logs:
-            bot.reply_to(message, f'Записей за {date_str} для сотрудника "{employee}" не найдено')
+            bot.reply_to(message, f'Записей за {report_date_str} для сотрудника "{employee}" не найдено')
             return
 
-        report = format_report(logs, employee, report_date)
+        report = format_report(logs, employee, full_date)
 
         MAX_MESSAGE_LENGTH = 4096
         if len(report) > MAX_MESSAGE_LENGTH:
             for chunk in [report[i:i + MAX_MESSAGE_LENGTH] for i
-                          in range(0, len(report), MAX_MESSAGE_LENGTH)]:
+                          in range(0, len(report), MAX_MESSAGE_LENGTH)
+                          ]:
                 bot.reply_to(message, chunk)
         else:
             bot.reply_to(message, report)
 
+    except ValueError as ve:
+        bot.reply_to(message, f'Ошибка в формате даты: {ve}')
     except Exception as exc:
         bot.reply_to(message, f'Ошибка при формировании отчета: {exc}')
+        print(f'Exception occurred: {exc}')
 
 @bot.message_handler(commands=['periodAll'])
 def send_period_all(message):

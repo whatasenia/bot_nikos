@@ -67,24 +67,14 @@ def format_report(logs, employee, report_date):
             continue
 
         total_minutes += duration
-        report += f'{start_time.strftime("%H:%M")}-{end_time_str} - {logs[i][2]}'
-        if logs[i][3]:
-            report += f'\n({logs[i][3]})'
+        report += f'{start_time.strftime("%H:%M")}-{end_time_str} - {logs[i][3]}'
+        if logs[i][4]:
+            report += f'\n({logs[i][4]})'
         report += '\n\n'
 
     total_hours = round(total_minutes / 60, 3)
     report += f'\n\nВсего: {total_hours} часов ({total_minutes} минут)'
     return report
-
-def get_unique_employees():
-    """
-    получает список сотрудников
-    """
-    with sqlite3.connect(DB_NAME) as conn:
-        cursor = conn.cursor()
-        cursor.execute('SELECT DISTINCT employee FROM user')
-        rows = cursor.fetchall()
-        return [row[0] for row in rows]
 
 def get_daily_report(employee, date):
     """
@@ -118,6 +108,16 @@ def get_daily_report(employee, date):
                 time_stamp = f"Некорректный формат времени: {row[1]}"
             result.append((row[0], time_stamp, row[2], row[3], row[4]))
         return result
+
+def get_unique_employees():
+    """
+    получает список сотрудников
+    """
+    with sqlite3.connect(DB_NAME) as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT DISTINCT employee FROM user')
+        rows = cursor.fetchall()
+        return [row[0] for row in rows]
 
 def get_period_report(employee, start_date, end_date):
     """
