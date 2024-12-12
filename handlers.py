@@ -1,5 +1,6 @@
 import re
 import sqlite3
+from calendar import day_abbr
 from datetime import datetime
 
 from telebot import TeleBot
@@ -171,6 +172,58 @@ def send_report(message):
         bot.reply_to(message, f'Ошибка при формировании отчета: {exc}')
         print(f'Exception occurred: {exc}')
 
+@bot.message_handler(commands=['reportAll'])
+def report_all(message):
+    """
+    Обрабатывает команду /reportAll для генерации отчета за день по всем сотрудникам.
+    Если сотрудник не работал в указанный день, это будет отображено в отчете.
+    """
+    try:
+        args = message.text.split()
+
+        if len(args) < 2:
+            date_input = datetime.now().strftime('%d%m')
+        else:
+            date_input = args[1].strip()
+
+        try:
+            current_year = datetime.now().year
+            full_date_str = f'{current_year}{date_input}'
+            report_date = datetime.strptime(full_date_str, '%Y%d%m')
+        except ValueError:
+            bot.reply_to(message, 'Формат даты должен быть ДДММ')
+            return
+
+        report_date_str = report_date.strftime('%Y-%m-%d')
+
+        employees = get_unique_employees()
+        if not employees:
+            bot.reply_to(message, 'Список сотрудников пуст')
+            return
+
+        report = f'Отчет за {report_date.strftime("%d.%m.%y")}:\n\n'
+
+        for employee in employees:
+            logs = get_daily_report(employee, report_date_str)
+            if not logs:
+                report += (f'<b>Сотрудник "{employee}":</b> Не работал\n'
+                           f'➖➖➖➖➖➖➖➖➖➖\n')
+                continue
+
+            employee_report = format_report(logs, employee, report_date)
+            report += (f'<b>{employee_report}</b>\n'
+                       f'➖➖➖➖➖➖➖➖➖➖\n')
+
+        MAX_MESSAGE_LENGTH = 4095
+        if len(report) > MAX_MESSAGE_LENGTH:
+            for chunk in [report[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(report), MAX_MESSAGE_LENGTH)]:
+                bot.reply_to(message, chunk)
+        else:
+            bot.reply_to(message, report, parse_mode='HTML')
+
+    except Exception as exc:
+        bot.reply_to(message, f'Ошибка при формировании общего отчета: {exc}')
+
 @bot.message_handler(commands=['periodAll'])
 def send_period_all(message):
     """
@@ -189,7 +242,7 @@ def send_period_all(message):
             start_period, end_period = period.split('-')
             start_day = int(start_period[:2])
             start_month = int(start_period[2:])
-            end_day= int(end_period[:2])
+            end_day = int(end_period[:2])
             end_month = int(end_period[2:])
             current_year = datetime.now().year
 
@@ -357,17 +410,34 @@ def help_command(message):
     """
 
     commands = """
-    Список команд:
-    /start - Приветственное сообщение
-    /report <сотрудник> <ДДММГГ> - Отчет за день
-    /get <ДДММГГ> - Получение всех записей за конкретный день с ID   
-    /period <сотрудник> <ДДММ-ДДММ> - вывод общего кол-ва часов работы за указанный период
-    /delete <id> - Удаление записи по ID
+    
+    /start - Приветственное сообщение.
+    
+    /help - Список доступных команд.
+    
+    /report <сотрудник> <ДДММ(ГГ)> - Отчет по сотруднику за указанный день. 
+    Если дата не указана, используется текущий день.
+    
+    /reportAll <ДДММ> - генерация отчетов за день по всем сотрудникам.
+    Если дата не указана, подставляется сегодняшняя дата.
+    
+    /get <ДДММГГ> - Получение всех записей за конкретный день с ID.
+    
+    /period <сотрудник> <ДДММ-ДДММ> - Общее количество часов работы 
+    сотрудника за указанный период.
+    
+    /periodAll <ДДММ-ДДММ | ДДММ> - 
+        1. Если указан период (ДДММ-ДДММ), выводит отчеты по всем сотрудникам за указанный период.
+        2. Если указана одна дата (ДДММ), выводит отчеты для всех сотрудников, которые работали в этот день, в формате команды /report.
+    
+    /delete <ID> - Удаление записи по указанному ID.
+    
+    /add <сотрудник> <проект> <дата и время> [комментарий] - Добавление новой записи в базу данных.
     
     Чтобы добавить запись, отправьте сообщение в формате:
     
-    1 строка: Дата(опц) время(обяз) комментарий(опц). Формат: ДДММГГ ЧЧММ текст
-    2 строка: Сотрудник
-    3 строка: Проект
+    1 строка: Дата (опц), время (обяз), комментарий (опц). Формат: ДДММГГ ЧЧММ текст.  
+    2 строка: Имя сотрудника.  
+    3 строка: Название проекта.
     """
     bot.reply_to(message, commands)

@@ -73,7 +73,7 @@ def format_report(logs, employee, report_date):
         report += '\n\n'
 
     total_hours = round(total_minutes / 60, 3)
-    report += f'\n\nВсего: {total_hours} часов ({total_minutes} минут)'
+    report += f'\nВсего: {total_hours} часов ({total_minutes} минут)'
     return report
 
 def get_daily_report(employee, date):
