@@ -6,7 +6,7 @@ from datetime import datetime
 from telebot import TeleBot
 from database import (add_log, get_daily_report, delete_record_by_id,
                       get_period_report, infer_year, format_report,
-                      send_report_internal, get_unique_employees)
+                      send_report_internal, get_unique_employees, get_nearest_date)
 from TOKEN import TOKEN
 
 bot = TeleBot(TOKEN)
@@ -25,7 +25,7 @@ def add_record(message):
     lines = message.text.strip().split('\n')
     if len(lines) < 3:
         bot.reply_to(message, 'Сообщение должно состоять минимум из 3х строк: '
-                              'дата/время(формат ДДММГГ ЧЧММ комментарий или ЧЧММ комментарий), '
+                              'дата/время(формат ДДММ ЧЧММ комментарий или ЧЧММ комментарий), '
                               'сотрудник, проект')
         return
 
@@ -37,14 +37,15 @@ def add_record(message):
         match = re.match(r'(\d{4,6})? ?(\d{4})(?: (.+))?', date_time_str)
         if not match:
             bot.reply_to(message, 'Неверный формат строки времени. '
-                                  'Используйте "ДДММГГ ЧЧММ комментарий" или "ЧЧММ комментарий"')
+                                  'Используйте "ДДММ ЧЧММ комментарий" или "ЧЧММ комментарий"')
             return
 
-        date_part = match.group(1) if match.group(1) else datetime.now().strftime('%d%m%y')
+        date_part = match.group(1) if match.group(1) else datetime.now().strftime('%d%m')
         time_part = match.group(2)
         comment = match.group(3).strip() if match.group(3) else ''
 
-        full_date_time = datetime.strptime(f'{date_part} {time_part}', "%d%m%y %H%M")
+        date_with_year = get_nearest_date(date_part)
+        full_date_time = datetime.strptime(f'{date_with_year.strftime("%d%m%Y")} {time_part}', "%d%m%Y %H%M")
         time_stamp = full_date_time.strftime('%Y-%m-%d %H:%M:%S')
 
         for employee in employees:
@@ -187,9 +188,7 @@ def report_all(message):
             date_input = args[1].strip()
 
         try:
-            current_year = datetime.now().year
-            full_date_str = f'{current_year}{date_input}'
-            report_date = datetime.strptime(full_date_str, '%Y%d%m')
+            report_date = get_nearest_date(date_input)
         except ValueError:
             bot.reply_to(message, 'Формат даты должен быть ДДММ')
             return

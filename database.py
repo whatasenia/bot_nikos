@@ -1,7 +1,6 @@
 import sqlite3
-from datetime import datetime
-from logging import lastResort
-
+from datetime import datetime, timedelta
+from logging import lastResort, currentframe
 
 DB_NAME = 'bd_nikos.sql'
 
@@ -176,3 +175,23 @@ def send_report_internal(employee, date_part):
 
     except Exception as exc:
         return f'Ошибка при формировании отчета: {exc}'
+
+def get_nearest_date(date_input):
+    """
+    Возвращает ближайшую дату на основе текущей дату и введенного ДДММ
+    Если дата в текущем году уже прошла, возвращаем дату за след год
+    """
+
+    current_date = datetime.now()
+    day, month = int(date_input[:2]), int(date_input[2:])
+
+    date_this_year = datetime(current_date.year, month, day)
+    date_last_year = datetime(current_date.year - 1, month, day)
+
+    delta_this_year = abs((date_this_year - current_date).days)
+    delta_last_year = abs((date_last_year - current_date).days)
+
+    if delta_this_year <= delta_last_year:
+        return date_this_year
+    else:
+        return date_last_year
