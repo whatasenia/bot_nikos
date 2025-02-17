@@ -20,7 +20,7 @@ def init_db():
 
 def add_log(employee, project, time_stamp, comment):
     """
-    функция для добавления записи в БД
+    Функция для добавления записи в БД
     """
     with sqlite3.connect(DB_NAME) as conn:
         cursor = conn.cursor()

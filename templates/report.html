@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Отчет</title>
+</head>
+<body>
+    <h1>Отчет за выбранную дату</h1>
+    <table border="1">
+        <tr>
+            <th>Дата</th>
+            <th>Сотрудник</th>
+            <th>Проект</th>
+            <th>Комментарий</th>
+        </tr>
+        {% for row in records %}
+        <tr>
+            <td>{{ row[1] }}</td>
+            <td>{{ row[2] }}</td>
+            <td>{{ row[3] }}</td>
+            <td>{{ row[4] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
