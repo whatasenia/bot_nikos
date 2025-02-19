@@ -205,12 +205,12 @@ def report_all(message):
         for employee in employees:
             logs = get_daily_report(employee, report_date_str)
             if not logs:
-                report += (f'<b>Сотрудник "{employee}":</b> Не работал\n'
+                report += (f'<b>🔴 Сотрудник "{employee}":</b> Не работал\n'
                            f'➖➖➖➖➖➖➖➖➖➖\n')
                 continue
 
             employee_report = format_report(logs, employee, report_date)
-            report += (f'<b>{employee_report}</b>\n'
+            report += (f'<b>🔴 {employee_report}</b>\n'
                        f'➖➖➖➖➖➖➖➖➖➖\n')
 
         MAX_MESSAGE_LENGTH = 4095
