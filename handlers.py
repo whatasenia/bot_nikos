@@ -397,7 +397,6 @@ def send_projects_period(message):
             start_period, end_period = period.split('-')
             current_date = datetime.now()
 
-            # Определяем точные даты с учетом года
             start_date = infer_year(start_period, current_date)
             end_date = infer_year(end_period, current_date)
 
@@ -408,58 +407,49 @@ def send_projects_period(message):
             bot.reply_to(message, 'Период должен быть в формате ДДММ-ДДММ (например, 1708-2608)')
             return
 
-        # Получаем список сотрудников
         employees = get_unique_employees()
         if not employees:
             bot.reply_to(message, 'Список сотрудников пуст')
             return
 
-        # Формирование отчета
         report = f'Проекты с {start_date.strftime("%d.%m.%Y")} по {end_date.strftime("%d.%m.%Y")}:\n\n'
 
-        projects_time = {}  # Словарь для хранения времени по проектам
+        projects_time = {}
 
         for employee in employees:
-            # Получаем логи за период
             logs = get_period_report(employee, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
             if not logs:
                 continue
 
             for i in range(len(logs)):
-                project = logs[i][3]  # Название проекта
+                project = logs[i][3]
 
-                # Пропускаем записи с "Стоп" и "Ушел"
                 if project.lower() in ['стоп', 'ушел']:
                     continue
 
                 try:
-                    # Время начала записи
                     start_time = datetime.strptime(str(logs[i][1]), '%Y-%m-%d %H:%M:%S')
                 except ValueError:
-                    continue  # Пропускаем ошибочные записи
+                    continue
 
-                # Если есть следующая запись, считаем ее окончанием текущей записи
                 if i < len(logs) - 1:
                     try:
                         end_time = datetime.strptime(str(logs[i + 1][1]), '%Y-%m-%d %H:%M:%S')
                     except ValueError:
                         continue
                 else:
-                    end_time = datetime.now()  # Если это последняя запись, берем текущее время
+                    end_time = datetime.now()
 
-                # Ограничиваем расчет времени только указанным периодом
                 if start_time < start_date:
-                    start_time = start_date  # Обрезаем начало, если оно раньше периода
+                    start_time = start_date
                 if end_time > end_date:
-                    end_time = end_date  # Обрезаем окончание, если оно позже периода
+                    end_time = end_date
 
-                # Если отрезок времени полностью вне периода, пропускаем
                 if end_time <= start_date or start_time >= end_date:
                     continue
 
-                # Рассчитываем продолжительность (в минутах)
                 duration_minutes = int((end_time - start_time).total_seconds() // 60)
-                duration_hours = round(duration_minutes / 60, 2)  # Перевод в часы с двумя знаками
+                duration_hours = round(duration_minutes / 60, 2)
 
                 if duration_minutes > 0:
                     if project not in projects_time:
@@ -470,7 +460,6 @@ def send_projects_period(message):
 
                     projects_time[project][employee] += duration_minutes
 
-        # Генерация отчета по проектам
         for project, employees_data in projects_time.items():
             report += f'🔴 Проект "{project}":\n'
             for emp, minutes in employees_data.items():
@@ -482,7 +471,6 @@ def send_projects_period(message):
             bot.reply_to(message, 'Нет данных за указанный период.')
             return
 
-        # Ограничение на длину сообщения в Telegram
         MAX_MESSAGE_LENGTH = 4095
         if len(report) > MAX_MESSAGE_LENGTH:
             parts = [report[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(report), MAX_MESSAGE_LENGTH)]
@@ -542,6 +530,8 @@ def help_command(message):
     /periodAll <ДДММ-ДДММ | ДДММ> - 
         1. Если указан период (ДДММ-ДДММ), выводит отчеты по всем сотрудникам за указанный период.
         2. Если указана одна дата (ДДММ), выводит отчеты для всех сотрудников, которые работали в этот день, в формате команды /report.
+        
+    /projectsPeriod ДДММ-ДДММ - отчет о времени, потраченном сотрудниками на проекты в указанном периоде
     
     /delete <ID> - Удаление записи по указанному ID.
     
