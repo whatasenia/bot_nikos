@@ -2,6 +2,8 @@ import re
 import sqlite3
 from calendar import day_abbr
 from datetime import datetime
+import locale
+
 
 from telebot import TeleBot
 from database import (add_log, get_daily_report, delete_record_by_id,
@@ -9,6 +11,7 @@ from database import (add_log, get_daily_report, delete_record_by_id,
                       send_report_internal, get_unique_employees, get_nearest_date)
 from TOKEN import TOKEN
 
+locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
 bot = TeleBot(TOKEN)
 
 @bot.message_handler(commands=['start'])
@@ -46,7 +49,7 @@ def add_record(message):
 
         date_with_year = get_nearest_date(date_part)
         full_date_time = datetime.strptime(f'{date_with_year.strftime("%d%m%Y")} {time_part}', "%d%m%Y %H%M")
-        time_stamp = full_date_time.strftime('%Y-%m-%d %H:%M:%S')
+        time_stamp = full_date_time.strftime('%Y-%m-%d (%A) %H:%M:%S')
 
         for employee in employees:
             record_id = add_log(employee, project, time_stamp, comment)
@@ -200,7 +203,7 @@ def report_all(message):
             bot.reply_to(message, 'Список сотрудников пуст')
             return
 
-        report = f'Отчет за {report_date.strftime("%d.%m.%y")}:\n\n'
+        report = f'Отчет за {report_date.strftime("%d.%m.%y (%A)")}:\n\n'
 
         for employee in employees:
             logs = get_daily_report(employee, report_date_str)
@@ -239,14 +242,8 @@ def send_period_all(message):
 
         try:
             start_period, end_period = period.split('-')
-            start_day = int(start_period[:2])
-            start_month = int(start_period[2:])
-            end_day = int(end_period[:2])
-            end_month = int(end_period[2:])
-            current_year = datetime.now().year
-
-            start_date = datetime(current_year, start_month, start_day)
-            end_date = datetime(current_year, end_month, end_day)
+            start_date = get_nearest_date(start_period)
+            end_date = get_nearest_date(end_period)
 
             if end_date < start_date:
                 bot.reply_to(message, 'Дата окончания периода должна быть позже даты начала.')
@@ -260,8 +257,8 @@ def send_period_all(message):
             bot.reply_to(message, 'Список сотрудников пуст')
             return
 
-        report = (f'Отчеты по сотрудникам за период с {start_date.strftime("%d.%m.%y")} '
-                  f'по {end_date.strftime("%d.%m.%y")}:\n\n')
+        report = (f'Отчеты по сотрудникам за период с {start_date.strftime("%d.%m.%y (%A)")} '
+                  f'по {end_date.strftime("%d.%m.%y (%A)")}:\n\n')
 
         for employee in employees:
             logs = get_period_report(employee, start_date.strftime('%Y-%m-%d'),
@@ -293,10 +290,9 @@ def send_period_all(message):
             report += f'<b>Сотрудник "{employee}":</b>\n'
             report += f'Итого: {round(total_minutes / 60, 3)} ч ({total_minutes} мин):\n\n'
 
-            # расписать по дням и кол-во часов:
             for date, minutes in sorted(daily_totals.items()):
                 hours = round(minutes / 60, 3)
-                report += f'<i>{date.strftime("%d.%m.%y")}: {hours} ч ({minutes} мин)</i>\n'
+                report += f'<i>{date.strftime("%d.%m.%y (%A)")}: {hours} ч ({minutes} мин)</i>\n'
             report += '\n'
 
         MAX_MESSAGE_LENGTH = 4095
@@ -343,8 +339,8 @@ def send_period_summary(message):
         logs = get_period_report(employee, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
         if not logs:
             bot.reply_to(message, f'Записей для сотрудника {employee} '
-                                  f'в период с {start_date.strftime("%d.%m.%y")} '
-                                  f'по {end_date.strftime("%d.%m.%y")} не найдено')
+                                  f'в период с {start_date.strftime("%d.%m.%y (%A)")} '
+                                  f'по {end_date.strftime("%d.%m.%y (%A)")} не найдено')
             return
 
         daily_totals = {}
@@ -368,13 +364,13 @@ def send_period_summary(message):
                 daily_totals[current_date] += duration
 
         report = (f'Часы работы "{employee}" за период '
-                  f'с {start_date.strftime("%d.%m.%y")} '
-                  f'по {end_date.strftime("%d.%m.%y")}:\n\n')
+                  f'с {start_date.strftime("%d.%m.%y (%A)")} '
+                  f'по {end_date.strftime("%d.%m.%y (%A)")}:\n\n')
         report += f'Итого: {round(total_minutes / 60, 3)} ч ({total_minutes} мин):\n\n'
 
         for date, minutes in sorted(daily_totals.items()):
             hours = round(minutes / 60, 3)
-            report += f'{date.strftime("%d.%m.%y")}: Всего: {hours} ч ({minutes} мин)\n'
+            report += f'{date.strftime("%d.%m.%y (%A)")}: Всего: {hours} ч ({minutes} мин)\n'
         bot.reply_to(message, report)
 
     except Exception as exc:
@@ -412,7 +408,7 @@ def send_projects_period(message):
             bot.reply_to(message, 'Список сотрудников пуст')
             return
 
-        report = f'Проекты с {start_date.strftime("%d.%m.%Y")} по {end_date.strftime("%d.%m.%Y")}:\n\n'
+        report = f'Проекты с {start_date.strftime("%d.%m.%Y (%A)")} по {end_date.strftime("%d.%m.%Y (%A)")}:\n\n'
 
         projects_time = {}
 
@@ -422,7 +418,8 @@ def send_projects_period(message):
                 continue
 
             for i in range(len(logs)):
-                project = logs[i][3]
+                project_name = logs[i][3]
+                project = project_name[0].lower() + project_name[1:]
 
                 if project.lower() in ['стоп', 'ушел']:
                     continue
@@ -463,7 +460,7 @@ def send_projects_period(message):
         for project, employees_data in projects_time.items():
             report += f'🔴 Проект "{project}":\n'
             for emp, minutes in employees_data.items():
-                hours = round(minutes / 60, 2)  # Перевод в часы
+                hours = round(minutes / 60, 2)
                 report += f'- {emp}: {minutes} мин ({hours} ч)\n'
             report += '\n'
 

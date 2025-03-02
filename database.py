@@ -47,7 +47,7 @@ def format_report(logs, employee, report_date):
     """
     шаблон отчета по сотруднику за конкретный день
     """
-    report = f'Сотрудник "{employee}" за {report_date.strftime("%d.%m.%y")}:\n\n'
+    report = f'Сотрудник "{employee}" за {report_date.strftime("%d.%m.%y (%A)")}:\n\n'
     total_minutes = 0
 
     for i in range(len(logs)):
