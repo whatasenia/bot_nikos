@@ -380,6 +380,120 @@ def send_period_summary(message):
     except Exception as exc:
         bot.reply_to(message, f'Ошибка при формировании отчета за период: {exc}')
 
+@bot.message_handler(commands=['projectsPeriod'])
+def send_projects_period(message):
+    """
+    Генерирует отчет по времени, потраченному на проекты сотрудниками за указанный период
+    """
+    try:
+        args = message.text.split()
+        if len(args) < 2:
+            bot.reply_to(message, 'Используйте: /projectsPeriod <период в форме ДДММ-ДДММ>')
+            return
+
+        period = args[1].strip()
+
+        try:
+            start_period, end_period = period.split('-')
+            current_date = datetime.now()
+
+            # Определяем точные даты с учетом года
+            start_date = infer_year(start_period, current_date)
+            end_date = infer_year(end_period, current_date)
+
+            if end_date < start_date:
+                bot.reply_to(message, 'Дата окончания периода должна быть позже даты начала.')
+                return
+        except ValueError:
+            bot.reply_to(message, 'Период должен быть в формате ДДММ-ДДММ (например, 1708-2608)')
+            return
+
+        # Получаем список сотрудников
+        employees = get_unique_employees()
+        if not employees:
+            bot.reply_to(message, 'Список сотрудников пуст')
+            return
+
+        # Формирование отчета
+        report = f'Проекты с {start_date.strftime("%d.%m.%Y")} по {end_date.strftime("%d.%m.%Y")}:\n\n'
+
+        projects_time = {}  # Словарь для хранения времени по проектам
+
+        for employee in employees:
+            # Получаем логи за период
+            logs = get_period_report(employee, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
+            if not logs:
+                continue
+
+            for i in range(len(logs)):
+                project = logs[i][3]  # Название проекта
+
+                # Пропускаем записи с "Стоп" и "Ушел"
+                if project.lower() in ['стоп', 'ушел']:
+                    continue
+
+                try:
+                    # Время начала записи
+                    start_time = datetime.strptime(str(logs[i][1]), '%Y-%m-%d %H:%M:%S')
+                except ValueError:
+                    continue  # Пропускаем ошибочные записи
+
+                # Если есть следующая запись, считаем ее окончанием текущей записи
+                if i < len(logs) - 1:
+                    try:
+                        end_time = datetime.strptime(str(logs[i + 1][1]), '%Y-%m-%d %H:%M:%S')
+                    except ValueError:
+                        continue
+                else:
+                    end_time = datetime.now()  # Если это последняя запись, берем текущее время
+
+                # Ограничиваем расчет времени только указанным периодом
+                if start_time < start_date:
+                    start_time = start_date  # Обрезаем начало, если оно раньше периода
+                if end_time > end_date:
+                    end_time = end_date  # Обрезаем окончание, если оно позже периода
+
+                # Если отрезок времени полностью вне периода, пропускаем
+                if end_time <= start_date or start_time >= end_date:
+                    continue
+
+                # Рассчитываем продолжительность (в минутах)
+                duration_minutes = int((end_time - start_time).total_seconds() // 60)
+                duration_hours = round(duration_minutes / 60, 2)  # Перевод в часы с двумя знаками
+
+                if duration_minutes > 0:
+                    if project not in projects_time:
+                        projects_time[project] = {}
+
+                    if employee not in projects_time[project]:
+                        projects_time[project][employee] = 0
+
+                    projects_time[project][employee] += duration_minutes
+
+        # Генерация отчета по проектам
+        for project, employees_data in projects_time.items():
+            report += f'🔴 Проект "{project}":\n'
+            for emp, minutes in employees_data.items():
+                hours = round(minutes / 60, 2)  # Перевод в часы
+                report += f'- {emp}: {minutes} мин ({hours} ч)\n'
+            report += '\n'
+
+        if not projects_time:
+            bot.reply_to(message, 'Нет данных за указанный период.')
+            return
+
+        # Ограничение на длину сообщения в Telegram
+        MAX_MESSAGE_LENGTH = 4095
+        if len(report) > MAX_MESSAGE_LENGTH:
+            parts = [report[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(report), MAX_MESSAGE_LENGTH)]
+            for part in parts:
+                bot.reply_to(message, part)
+        else:
+            bot.reply_to(message, report)
+
+    except Exception as exc:
+        bot.reply_to(message, f'Ошибка при формировании отчета за период: {exc}')
+
 @bot.message_handler(commands=['delete'])
 def delete_record(message):
     """
@@ -440,3 +554,5 @@ def help_command(message):
     3 строка: Название проекта.
     """
     bot.reply_to(message, commands)
+
+

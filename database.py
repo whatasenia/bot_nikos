@@ -102,7 +102,7 @@ def get_daily_report(employee, date):
         result = []
         for row in rows:
             try:
-                time_stamp = datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S')  # Преобразование строки в дату
+                time_stamp = datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S')
             except ValueError:
                 time_stamp = f"Некорректный формат времени: {row[1]}"
             result.append((row[0], time_stamp, row[2], row[3], row[4]))
