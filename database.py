@@ -1,6 +1,9 @@
 import sqlite3
 from datetime import datetime, timedelta
 from logging import lastResort, currentframe
+import logging
+from dateutil import parser
+import re
 
 DB_NAME = 'bd_nikos.sql'
 
@@ -77,7 +80,7 @@ def format_report(logs, employee, report_date):
 
 def get_daily_report(employee, date):
     """
-    формирует отчет из всех записей за текущий день
+    Формирует отчет из всех записей за текущий день
     """
     with sqlite3.connect(DB_NAME) as conn:
         cursor = conn.cursor()
@@ -102,9 +105,14 @@ def get_daily_report(employee, date):
         result = []
         for row in rows:
             try:
-                time_stamp = datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S')
-            except ValueError:
-                time_stamp = f"Некорректный формат времени: {row[1]}"
+                if not row[2]:
+                    raise ValueError(f"Имя сотрудника отсутствует для записи с ID: {row[0]}")
+
+                clean_time_stamp = re.sub(r'\s\([^)]+\)', '', row[1])
+
+                time_stamp = datetime.strptime(clean_time_stamp, '%Y-%m-%d %H:%M:%S')
+            except ValueError as ve:
+                continue
             result.append((row[0], time_stamp, row[2], row[3], row[4]))
         return result
 
@@ -120,32 +128,15 @@ def get_unique_employees():
 
 def get_period_report(employee, start_date, end_date):
     """
-    формирует отчет по сотруднику за указанный период
+    Формирует отчет по сотруднику за указанный период
     """
-    with sqlite3.connect(DB_NAME) as conn:
-        cursor = conn.cursor()
-        query = """
-        SELECT id, time_stamp, employee, project, comment 
-        FROM user 
-        WHERE time_stamp BETWEEN ? AND ?
-        """
-        params = [f'{start_date} 00:00:00', f'{end_date} 23:59:59']
+    logs = get_logs(employee, f'{start_date} 00:00:00', f'{end_date} 23:59:59')
 
-        if employee:
-            query += " AND LOWER(employee) = ?"
-            params.append(employee.lower())
-        query += "ORDER BY time_stamp ASC"
-        cursor.execute(query, params)
+    if not logs:
+        return f'Записей за период с {start_date} по {end_date} для сотрудника "{employee}" не найдено'
 
-        rows = cursor.fetchall()
-        result = []
-        for row in rows:
-            try:
-                time_stamp = datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S')
-            except ValueError:
-                continue
-            result.append((row[0], time_stamp, row[2], row[3], row[4]))
-        return result
+
+    return format_report(logs, employee, datetime.strptime(start_date, '%Y-%m-%d'))
 
 def delete_record_by_id(record_id):
     """
@@ -178,12 +169,17 @@ def send_report_internal(employee, date_part):
 
 def get_nearest_date(date_input):
     """
-    Возвращает ближайшую дату на основе текущей дату и введенного ДДММ
-    Если дата в текущем году уже прошла, возвращаем дату за след год
+    Возвращает ближайшую дату на основе текущей даты и введенного ДДММ.
+    Если дата в текущем году уже прошла, возвращаем дату за следующий год.
     """
-
     current_date = datetime.now()
     day, month = int(date_input[:2]), int(date_input[2:])
+
+    # Проверка на допустимость дня и месяца
+    try:
+        datetime(current_date.year, month, day)
+    except ValueError:
+        raise ValueError(f"Неверная дата: {date_input}")
 
     date_this_year = datetime(current_date.year, month, day)
     date_last_year = datetime(current_date.year - 1, month, day)
@@ -192,6 +188,52 @@ def get_nearest_date(date_input):
     delta_last_year = abs((date_last_year - current_date).days)
 
     if delta_this_year <= delta_last_year:
-        return date_this_year
+        nearest_date = date_this_year
     else:
-        return date_last_year
+        nearest_date = date_last_year
+
+    return nearest_date.replace(hour=0, minute=0, second=0, microsecond=0)
+
+def get_logs(employee, start_date, end_date):
+    """
+    Общая функция для получения логов из базы данных за указанный период и фильтрации по сотруднику
+    """
+    with sqlite3.connect(DB_NAME) as conn:
+        cursor = conn.cursor()
+        query = """
+                SELECT id, time_stamp, employee, project, comment 
+                FROM user 
+                WHERE time_stamp BETWEEN ? AND ?
+                """
+        params = [start_date, end_date]
+
+        if employee:
+            query += " AND LOWER(employee) = ?"
+            params.append(employee.lower())
+
+        query += " ORDER BY time_stamp ASC"
+        cursor.execute(query, params)
+
+        rows = cursor.fetchall()
+        result = []
+        for row in rows:
+            try:
+                time_stamp = datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                continue
+            result.append((row[0], time_stamp, row[2], row[3], row[4]))
+        return result
+
+def safe_parse_date(date_string):
+    """
+    Универсальный разбор даты. Автоматически определяет формат и убирает лишние данные.
+    """
+    logging.debug(f"Полученная строка даты: {date_string}")
+
+    try:
+        parsed_date = parser.parse(date_string, dayfirst=True).date()
+        logging.debug(f"Дата успешно распознана: {parsed_date}")
+        return parsed_date
+    except ValueError as e:
+        logging.error(f"Ошибка при разборе даты {date_string}: {e}")
+        return None
