@@ -143,7 +143,7 @@ def get_period_report(employee, start_date, end_date):
             try:
                 time_stamp = datetime.strptime(row[1], '%Y-%m-%d %H:%M:%S')
             except ValueError:
-                time_stamp = f'Некорректный формат времени: {row[1]}'
+                continue
             result.append((row[0], time_stamp, row[2], row[3], row[4]))
         return result
 

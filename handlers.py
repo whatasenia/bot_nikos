@@ -3,6 +3,7 @@ import sqlite3
 from calendar import day_abbr
 from datetime import datetime
 
+
 from telebot import TeleBot
 from database import (add_log, get_daily_report, delete_record_by_id,
                       get_period_report, infer_year, format_report,
@@ -239,14 +240,8 @@ def send_period_all(message):
 
         try:
             start_period, end_period = period.split('-')
-            start_day = int(start_period[:2])
-            start_month = int(start_period[2:])
-            end_day = int(end_period[:2])
-            end_month = int(end_period[2:])
-            current_year = datetime.now().year
-
-            start_date = datetime(current_year, start_month, start_day)
-            end_date = datetime(current_year, end_month, end_day)
+            start_date = get_nearest_date(start_period)
+            end_date = get_nearest_date(end_period)
 
             if end_date < start_date:
                 bot.reply_to(message, 'Дата окончания периода должна быть позже даты начала.')
@@ -274,6 +269,9 @@ def send_period_all(message):
             total_minutes = 0
 
             for i in range(len(logs) - 1):
+                if isinstance(logs[i][1], str):
+                    logs[i] = (
+                    logs[i][0], datetime.strptime(logs[i][1], '%Y-%m-%d %H:%M:%S'), logs[i][2], logs[i][3], logs[i][4])
                 current_date = logs[i][1].date()
                 next_date = logs[i + 1][1].date()
 
@@ -293,7 +291,6 @@ def send_period_all(message):
             report += f'<b>Сотрудник "{employee}":</b>\n'
             report += f'Итого: {round(total_minutes / 60, 3)} ч ({total_minutes} мин):\n\n'
 
-            # расписать по дням и кол-во часов:
             for date, minutes in sorted(daily_totals.items()):
                 hours = round(minutes / 60, 3)
                 report += f'<i>{date.strftime("%d.%m.%y")}: {hours} ч ({minutes} мин)</i>\n'
@@ -344,7 +341,7 @@ def send_period_summary(message):
         if not logs:
             bot.reply_to(message, f'Записей для сотрудника {employee} '
                                   f'в период с {start_date.strftime("%d.%m.%y")} '
-                                  f'по {end_date.strftime("%d.%m.%y")} не найдено')
+                                  f'по {end_date.strftime("%d.%m.%y (%A)")} не найдено')
             return
 
         daily_totals = {}
@@ -397,7 +394,6 @@ def send_projects_period(message):
             start_period, end_period = period.split('-')
             current_date = datetime.now()
 
-            # Определяем точные даты с учетом года
             start_date = infer_year(start_period, current_date)
             end_date = infer_year(end_period, current_date)
 
@@ -408,58 +404,50 @@ def send_projects_period(message):
             bot.reply_to(message, 'Период должен быть в формате ДДММ-ДДММ (например, 1708-2608)')
             return
 
-        # Получаем список сотрудников
         employees = get_unique_employees()
         if not employees:
             bot.reply_to(message, 'Список сотрудников пуст')
             return
 
-        # Формирование отчета
         report = f'Проекты с {start_date.strftime("%d.%m.%Y")} по {end_date.strftime("%d.%m.%Y")}:\n\n'
 
-        projects_time = {}  # Словарь для хранения времени по проектам
+        projects_time = {}
 
         for employee in employees:
-            # Получаем логи за период
             logs = get_period_report(employee, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
             if not logs:
                 continue
 
             for i in range(len(logs)):
-                project = logs[i][3]  # Название проекта
+                project_name = logs[i][3]
+                project = project_name[0].lower() + project_name[1:]
 
-                # Пропускаем записи с "Стоп" и "Ушел"
                 if project.lower() in ['стоп', 'ушел']:
                     continue
 
                 try:
-                    # Время начала записи
                     start_time = datetime.strptime(str(logs[i][1]), '%Y-%m-%d %H:%M:%S')
                 except ValueError:
-                    continue  # Пропускаем ошибочные записи
+                    continue
 
-                # Если есть следующая запись, считаем ее окончанием текущей записи
                 if i < len(logs) - 1:
                     try:
                         end_time = datetime.strptime(str(logs[i + 1][1]), '%Y-%m-%d %H:%M:%S')
                     except ValueError:
                         continue
                 else:
-                    end_time = datetime.now()  # Если это последняя запись, берем текущее время
+                    end_time = datetime.now()
 
-                # Ограничиваем расчет времени только указанным периодом
                 if start_time < start_date:
-                    start_time = start_date  # Обрезаем начало, если оно раньше периода
+                    start_time = start_date
                 if end_time > end_date:
-                    end_time = end_date  # Обрезаем окончание, если оно позже периода
+                    end_time = end_date
 
-                # Если отрезок времени полностью вне периода, пропускаем
                 if end_time <= start_date or start_time >= end_date:
                     continue
 
-                # Рассчитываем продолжительность (в минутах)
                 duration_minutes = int((end_time - start_time).total_seconds() // 60)
-                duration_hours = round(duration_minutes / 60, 2)  # Перевод в часы с двумя знаками
+                duration_hours = round(duration_minutes / 60, 2)
 
                 if duration_minutes > 0:
                     if project not in projects_time:
@@ -470,11 +458,10 @@ def send_projects_period(message):
 
                     projects_time[project][employee] += duration_minutes
 
-        # Генерация отчета по проектам
         for project, employees_data in projects_time.items():
             report += f'🔴 Проект "{project}":\n'
             for emp, minutes in employees_data.items():
-                hours = round(minutes / 60, 2)  # Перевод в часы
+                hours = round(minutes / 60, 2)
                 report += f'- {emp}: {minutes} мин ({hours} ч)\n'
             report += '\n'
 
@@ -482,7 +469,6 @@ def send_projects_period(message):
             bot.reply_to(message, 'Нет данных за указанный период.')
             return
 
-        # Ограничение на длину сообщения в Telegram
         MAX_MESSAGE_LENGTH = 4095
         if len(report) > MAX_MESSAGE_LENGTH:
             parts = [report[i:i + MAX_MESSAGE_LENGTH] for i in range(0, len(report), MAX_MESSAGE_LENGTH)]
@@ -542,6 +528,8 @@ def help_command(message):
     /periodAll <ДДММ-ДДММ | ДДММ> - 
         1. Если указан период (ДДММ-ДДММ), выводит отчеты по всем сотрудникам за указанный период.
         2. Если указана одна дата (ДДММ), выводит отчеты для всех сотрудников, которые работали в этот день, в формате команды /report.
+        
+    /projectsPeriod ДДММ-ДДММ - отчет о времени, потраченном сотрудниками на проекты в указанном периоде
     
     /delete <ID> - Удаление записи по указанному ID.
     
