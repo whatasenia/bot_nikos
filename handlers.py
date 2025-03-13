@@ -1,21 +1,17 @@
 import locale
 import re
+from datetime import datetime
 import sqlite3
-from calendar import day_abbr
-from datetime import datetime, timedelta
-import logging
-from telebot import TeleBot
+
+from telebot import TeleBot, types
 locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
 
 from database import (add_log, get_daily_report, delete_record_by_id,
-                      get_period_report, infer_year, format_report,
-                      send_report_internal, get_unique_employees, get_nearest_date,
-                      safe_parse_date, get_logs)
+                      infer_year, format_report, send_report_internal,
+                      get_unique_employees, get_nearest_date, get_logs)
 from TOKEN import TOKEN
 
-# logging.basicConfig(level=logging.DEBUG, filename="bot_log.txt", filemode="w",
-#                     format="%(asctime)s - %(levelname)s - %(message)s")
-
+DB_NAME = 'bd_nikos.sql'
 bot = TeleBot(TOKEN)
 
 @bot.message_handler(commands=['start'])
@@ -25,8 +21,7 @@ def start_command(message):
 @bot.message_handler(func=lambda message: not message.text.startswith('/'))
 def add_record(message):
     """
-    The handler for adding a record
-    If no date is specified, the current date is used
+    Добавление записи в БД + кнопки
     """
 
     lines = message.text.strip().split('\n')
@@ -58,18 +53,71 @@ def add_record(message):
         for employee in employees:
             record_id = add_log(employee, project, time_stamp, comment)
             report_emp = send_report_internal(employee, date_part)
+
+            keyboard = types.InlineKeyboardMarkup()
+            delete_button = types.InlineKeyboardButton('🗑 Удалить', callback_data=f'delete_{record_id}')
+            edit_button = types.InlineKeyboardButton('✏️ Изменить', callback_data=f'edit_{record_id}')
+            keyboard.add(delete_button, edit_button)
+
             bot.reply_to(message, f'Запись добавлена: '
                                   f'ID: {record_id}'
                                   f'\nСотрудник: {employee}'
                                   f'\nПроект: {project}'
                                   f'\nДата и время: {time_stamp}'
-                                  f'\n\n{report_emp}'
-                         )
+                                  f'\n\n{report_emp}',
+                                  reply_markup=keyboard)
 
     except ValueError as ve:
         bot.reply_to(message, f'Ошибка в формате даты или времени: {ve}')
     except Exception as exc:
         bot.reply_to(message, f'Ошибка: {exc}')
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('delete_'))
+def delete_record_callback(call):
+    """
+    Обработчик кнопки для удаления записи по ID
+    """
+    record_id = int(call.data.split('_')[1])
+
+    try:
+        if delete_record_by_id(record_id):
+            bot.answer_callback_query(call.id, text=f'Запись с ID={record_id} успешно удалена.')
+            bot.edit_message_text(f'Запись с ID={record_id} была удалена.',
+                                  call.message.chat.id, call.message.message_id)
+        else:
+            bot.answer_callback_query(call.id, text=f'Запись с ID={record_id} не найдена.')
+
+    except Exception as exc:
+        bot.answer_callback_query(call.id, text=f'Произошла ошибка: {exc}')
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_'))
+def callback_edit(call):
+    """
+    Обработчик кнопки для редактирования записи по ID
+
+    """
+    record_id = int(call.data.split('_')[1])
+
+    with sqlite3.connect(DB_NAME) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT employee, project, time_stamp, comment FROM user WHERE id = ?", (record_id,))
+        record = cursor.fetchone()
+
+    if record:
+        employee, project, time_stamp, comment = record
+
+        date_part = time_stamp[8:10] + time_stamp[5:7]
+        time_part = time_stamp[11:16].replace(":", "")
+        original_message = f"{date_part} {time_part} {comment}\n{employee}\n{project}"
+
+        bot.send_message(
+            call.message.chat.id,
+            f"✏️ Скопируйте сообщение, отредактируйте и отправьте снова:\n\n```{original_message}```",
+            parse_mode="Markdown")
+        delete_record_by_id(record_id)
+
+    else:
+        bot.answer_callback_query(call.id, '❌ Ошибка: оригинальное сообщение не найдено.')
 
 @bot.message_handler(commands=['get'])
 def get_records_by_date(message):
@@ -606,5 +654,3 @@ def help_command(message):
     3 строка: Название проекта.
     """
     bot.reply_to(message, commands)
-
-

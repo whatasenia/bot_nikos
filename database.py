@@ -1,8 +1,5 @@
 import sqlite3
-from datetime import datetime, timedelta
-from logging import lastResort, currentframe
-import logging
-from dateutil import parser
+from datetime import datetime
 import re
 
 DB_NAME = 'bd_nikos.sql'
@@ -126,18 +123,6 @@ def get_unique_employees():
         rows = cursor.fetchall()
         return [row[0] for row in rows]
 
-def get_period_report(employee, start_date, end_date):
-    """
-    Формирует отчет по сотруднику за указанный период
-    """
-    logs = get_logs(employee, f'{start_date} 00:00:00', f'{end_date} 23:59:59')
-
-    if not logs:
-        return f'Записей за период с {start_date} по {end_date} для сотрудника "{employee}" не найдено'
-
-
-    return format_report(logs, employee, datetime.strptime(start_date, '%Y-%m-%d'))
-
 def delete_record_by_id(record_id):
     """
     удаляет запись из БД по ИД
@@ -175,7 +160,6 @@ def get_nearest_date(date_input):
     current_date = datetime.now()
     day, month = int(date_input[:2]), int(date_input[2:])
 
-    # Проверка на допустимость дня и месяца
     try:
         datetime(current_date.year, month, day)
     except ValueError:
@@ -223,17 +207,3 @@ def get_logs(employee, start_date, end_date):
                 continue
             result.append((row[0], time_stamp, row[2], row[3], row[4]))
         return result
-
-def safe_parse_date(date_string):
-    """
-    Универсальный разбор даты. Автоматически определяет формат и убирает лишние данные.
-    """
-    logging.debug(f"Полученная строка даты: {date_string}")
-
-    try:
-        parsed_date = parser.parse(date_string, dayfirst=True).date()
-        logging.debug(f"Дата успешно распознана: {parsed_date}")
-        return parsed_date
-    except ValueError as e:
-        logging.error(f"Ошибка при разборе даты {date_string}: {e}")
-        return None
